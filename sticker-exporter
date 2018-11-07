@@ -1,0 +1,95 @@
+#!/usr/bin/env node
+
+const program = require('commander');
+const { exec } = require('child_process');
+const mkdirp = require('mkdirp');
+const fs = require('fs');
+const path = require('path');
+
+// default logger
+const { log } = console;
+
+/**
+ * Termination process
+ */
+function end() {
+  process.exit(1);
+}
+
+function runProcess(cmd) {
+  return new Promise((resolve, reject) => {
+    exec(cmd, (error, stdout) => {
+      if (error) {
+        reject(error);
+      }
+
+      resolve(stdout.toString());
+    });
+  });
+}
+
+async function exportAssets(src, dest, options) {
+  const content = {
+    name: options.name ? options.name : '',
+    publisher: options.publisher ? options.publisher : '',
+    tray_image_file: 'thumbnail.webp',
+    identifier: dest.replace(/\D/g, ''),
+    publisher_email: '',
+    publisher_website: '',
+    privacy_policy_website: '',
+    license_agreement_website: '',
+    stickers: []
+  };
+  if (fs.existsSync(dest)) {
+    log(`folder ${dest} already exists.`);
+    // end();
+    await runProcess(`rm -rf ${dest}`);
+  }
+  await mkdirp(dest);
+  await runProcess(`cp -rf ${src}/* ${dest}`);
+  await runProcess(`rm -rf ${dest}/*_key`);
+  const files = fs.readdirSync(dest);
+  for (const file of files) {
+    const filePath = path.join(dest, file);
+    // Find only images
+    if (filePath.match(/^\d.*\d$/g)) {
+      // rename to png
+      await runProcess(`sips -Z 512 --padToHeightWidth 512 512 ${filePath}`);      
+      await runProcess(`cwebp -q 100 ${filePath} -o ${filePath}.webp`);
+      await runProcess(`rm -f ${filePath}`);
+      if (content.stickers.length < 30) {
+        content.stickers.push({
+          image_file: `${file}.webp`,
+          emojis: [],
+        });
+      } else {
+        log('Warning .. max 30 stickers are avaliables');
+      }
+    }
+  }
+  // await runProcess(`mv ${dest}/thumbnail ${dest}/thumbnail.png`);
+  await runProcess(`sips -Z 96 --padToHeightWidth 96 96 ${dest}/thumbnail`);
+  await runProcess(`cwebp -q 100 ${dest}/thumbnail -o ${dest}/thumbnail.webp`);
+  await runProcess(`rm -f ${dest}/thumbnail`);
+  fs.writeFileSync(`${dest}/contents.json`, JSON.stringify(content, null, 4));
+  end();
+}
+
+
+program
+  .version('0.1.0');
+
+/**
+ * Simple mathematic calcuation
+ */
+program
+  .command('export <src_path> <destination_path>')
+  .description('export the image from [src_path] and generate the needed assets at [destination_path] ')
+  .option('-n, --name <name>', 'Name')
+  .option('-p, --publisher <publisher>', 'Publisher')
+  .action(exportAssets);
+
+program.parse(process.argv);
+
+// If no arguments we should output the help
+if (!program.args.length) program.help();
