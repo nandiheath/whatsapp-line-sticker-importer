@@ -51,12 +51,16 @@ async function exportAssets(src, dest, options) {
   const files = fs.readdirSync(dest);
   for (const file of files) {
     const filePath = path.join(dest, file);
-    // Find only images
+    // Line images have only numeric digit file name
+    // So we can select all images by just a regex
     if (filePath.match(/^\d.*\d$/g)) {
-      // rename to png
-      await runProcess(`sips -Z 512 --padToHeightWidth 512 512 ${filePath}`);      
+      // Use sips to resample the png image and add transparent pad to make it 512x512
+      await runProcess(`sips -Z 512 --padToHeightWidth 512 512 ${filePath}`);  
+      // use cwebp to transform the image to webp format for android
       await runProcess(`cwebp -q 100 ${filePath} -o ${filePath}.webp`);
+      // remove the original image file
       await runProcess(`rm -f ${filePath}`);
+      // Since every sticker pack of whatsapp has maximum 30 stickers, we have to give up some of the stickers..
       if (content.stickers.length < 30) {
         content.stickers.push({
           image_file: `${file}.webp`,
@@ -67,7 +71,7 @@ async function exportAssets(src, dest, options) {
       }
     }
   }
-  // await runProcess(`mv ${dest}/thumbnail ${dest}/thumbnail.png`);
+  // Also process the thumbnail image
   await runProcess(`sips -Z 96 --padToHeightWidth 96 96 ${dest}/thumbnail`);
   await runProcess(`cwebp -q 100 ${dest}/thumbnail -o ${dest}/thumbnail.webp`);
   await runProcess(`rm -f ${dest}/thumbnail`);
